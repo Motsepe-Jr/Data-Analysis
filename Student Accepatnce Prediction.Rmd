@@ -1,0 +1,125 @@
+---
+title: "Prediction Student Acceptance"
+author: "Hector Motsepe"
+date: "08/09/2020"
+output: html_document
+---
+
+```{r}
+myData <- read.csv('https://stats.idre.ucla.edu/stat/data/binary.csv')
+head(myData)
+summary(myData)
+str(myData)
+myData$rank <- as.factor(myData$rank)
+myData$admit <- as.factor(myData$admit)
+```
+# Alter data for purpose of tutorial (add one)
+```{r}
+myData[myData$admit == 1, 'gpa'] <- myData[myData$admit == 1, 'gpa'] + 1
+```
+# Plot the data
+```{r}
+library(tidyverse)
+ggplot(myData, mapping = aes(x = gpa, y = admit)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE)    +
+  coord_cartesian(ylim = c(0, 1))
+
+ggplot(myData, mapping = aes(x = gpa, y = admit)) +
+  geom_point() +
+  geom_smooth(method = "glm", se = FALSE, method.args = list(family = 'binomial'))    +
+  coord_cartesian(ylim = c(0, 1))
+```
+# MODEL ADMIT BY GPA
+```{r}
+gpaModel <- glm(admit ~ gpa, data = myData, family = 'binomial')
+gpaModel
+exp(coef(gpaModel)) # increase in gpa the student is more likely to be accepted
+exp(confint(gpaModel))
+```
+# Predict admit by gpa, gre, and rank
+
+```{r}
+full_Model <- glm(admit ~ gpa + log2(gre) + rank,
+                  data = myData, family = 'binomial')
+full_Model
+exp(coef(full_Model)) # increase in gpa the student is more likely to be accepted
+exp(confint(full_Model))
+cbind(OR = exp(coef(full_Model)), exp(confint(full_Model)))
+```
+
+# Testing Overall contribution of Rank
+```{r}
+library(aod)
+wald.test(b = coef(full_Model), Sigma = vcov(full_Model), Terms = 4:6) 
+```
+# RANK OF UNIVERSITY DOES NOT CONTRIBUTE TO OUR MODEL "REMOVE rank from OUR MODEL'
+```{r}
+final_full_Model <- glm(admit ~ gpa + log2(gre),
+                  data = myData, family = 'binomial')
+
+final_full_Model
+exp(coef(final_full_Model)) # increase in gpa the student is more likely to be accepted
+exp(confint(final_full_Model))
+cbind(OR = exp(coef(final_full_Model)), exp(confint(final_full_Model)))
+```
+
+# ASSESSS MODEL USING CROSS VALIDATION
+```{r}
+library(caret)
+```
+# Give the method instructions
+```{r}
+crossValSettings <- trainControl(method = 'repeatedcv', number = 10,
+                                 savePredictions = TRUE)
+
+crossVal <- train(as.factor(admit) ~ gpa + log2(gre), data = myData, family ='binomial',
+                  method = 'glm', trControl = crossValSettings)
+crossVal
+
+pred <- predict(crossVal, newdata = myData)
+myData$admit <- as.factor(myData$admit) # make sure to change to factor
+pred
+confusionMatrix(data = pred, myData$admit)
+```
+# produce roc curve of model
+```{r}
+library(ROCR)
+profFull <- predict(full_Model, myData, 'response')
+profFull
+predict_FULL <- prediction(profFull, myData$admit)
+predict_FULL
+performance_FULL <- performance(predict_FULL, measure = 'tpr', x.measure = 'fpr')
+
+plot(performance_FULL, col='blue')
+
+profGPA <- predict(gpaModel, myData, 'response')
+profGPA
+predict_GPA <- prediction(profGPA, myData$admit)
+predict_GPA
+performance_GPA <- performance(predict_GPA, measure = 'tpr', x.measure = 'fpr')
+
+plot(performance_FULL, col='blue')
+plot(performance_GPA, col='red', add = TRUE)
+
+AUC_full <-  performance(predict_FULL, measure = 'auc')
+AUC_gpa<-  performance(predict_GPA, measure = 'auc')
+AUC_full@y.values
+AUC_gpa@y.values
+```
+
+# BUILDING A MULTINOMIAL LOGISTIC REGRESSION
+```{r}
+data("iris")
+summary(iris)
+
+library(nnet)
+
+multimodel <- multinom(Species ~ log2(Sepal.Width), data = iris)
+summary(multimodel)
+coef(multimodel)
+1/ exp(coef(multimodel))[,2]
+
+ggplot(iris, aes(Species, Sepal.Width)) +
+  geom_boxplot()
+```
